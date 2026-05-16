@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>L'Evasione Cibernetica - Escape Room 2D</title>
+    <style>
+        :root {
+            --bg-color: #050505;
+            --ui-bg: rgba(20, 20, 30, 0.9);
+            --accent: #00ffcc;
+            --text: #e0e0e0;
+            --danger: #ff4444;
+            --success: #44ff44;
+        }
+
+        * {
+            box-sizing: border-box;
+            user-select: none; /* Previene la selezione del testo durante il gioco */
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text);
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Interfaccia Utente (UI) */
+        #ui-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        header {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            background: var(--ui-bg);
+            padding: 10px 20px;
+            border: 1px solid var(--accent);
+            border-radius: 4px;
+            box-shadow: 0 0 10px rgba(0, 255, 204, 0.2);
+        }
+
+        h1 {
+            font-size: 1.2rem;
+            margin: 0;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        #inventory {
+            font-weight: bold;
+            display: flex;
+            gap: 15px;
+        }
+
+        .inv-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            opacity: 0.3;
+            transition: opacity 0.3s;
+        }
+
+        .inv-item.active {
+            opacity: 1;
+            color: var(--success);
+            text-shadow: 0 0 5px var(--success);
+        }
+
+        /* Area di Gioco */
+        #game-wrapper {
+            position: relative;
+            border: 2px solid #333;
+            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+            cursor: crosshair;
+        }
+
+        canvas {
+            display: block;
+            background-color: #111;
+        }
+
+        /* Messaggi e Dialoghi */
+        #message-box {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.85);
+            border: 1px solid var(--text);
+            padding: 10px 20px;
+            border-radius: 4px;
+            width: 80%;
+            text-align: center;
+            pointer-events: none; /* I click passano attraverso */
+            transition: opacity 0.3s;
+            opacity: 0;
+            z-index: 10;
+        }
+
+        #message-box.visible {
+            opacity: 1;
+        }
+
+        /* Schermata Iniziale / Finale */
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+            text-align: center;
+            padding: 20px;
+        }
+
+        #overlay h2 {
+            font-size: 2rem;
+            color: var(--accent);
+            margin-bottom: 20px;
+        }
+
+        #overlay p {
+            max-width: 400px;
+            line-height: 1.6;
+            margin-bottom: 30px;
+        }
+
+        .btn {
+            background: transparent;
+            color: var(--accent);
+            border: 2px solid var(--accent);
+            padding: 12px 30px;
+            font-family: inherit;
+            font-size: 1.1rem;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            background: var(--accent);
+            color: #000;
+            box-shadow: 0 0 15px var(--accent);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* Controlli Mobile (visibili solo su schermi piccoli) */
+        #mobile-controls {
+            display: none;
+            margin-top: 10px;
+            gap: 10px;
+        }
+        
+        @media (max-width: 768px) {
+            #mobile-controls {
+                display: flex;
+            }
+            h1 { font-size: 1rem; }
+        }
+        
+        .d-pad-btn {
+            width: 50px;
+            height: 50px;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            border-radius: 8px;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            touch-action: manipulation;
+        }
+        .d-pad-btn:active { background: var(--accent); color: #000; }
+
+    </style>
+</head>
+<body>
+
+    <div id="ui-container">
+        <header>
+            <h1>L'Evasione Cibernetica</h1>
+            <div id="inventory">
+                <span id="inv-key" class="inv-item">🔑 Chiave</span>
+            </div>
+        </header>
+
+        <div id="game-wrapper">
+            <canvas id="gameCanvas" width="600" height="400"></canvas>
+            
+            <div id="overlay">
+                <h2 id="overlay-title">SISTEMA BLOCCATO</h2>
+                <p id="overlay-desc">
+                    Sei intrappolato nel server centrale.<br>
+                    Trova la <strong>Chiave</strong> per sbloccare il <strong>Portale</strong> e fuggire.<br><br>
+                    <small>Usa il MOUSE per cliccare dove muoverti, o le FRECCE/WASD.</small>
+                </p>
+                <button class="btn" id="start-btn">AVVIA SISTEMA</button>
+            </div>
+
+            <div id="message-box">Messaggio di sistema</div>
+        </div>
+
+        <div id="mobile-controls">
+            <button class="d-pad-btn" id="btn-up">▲</button>
+            <button class="d-pad-btn" id="btn-down">▼</button>
+            <button class="d-pad-btn" id="btn-action">Azione</button>
+        </div>
+    </div>
+
+<script>
+/**
+ * LOGICA DI GIOCO
+ */
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const messageBox = document.getElementById('message-box');
+const overlay = document.getElementById('overlay');
+const startBtn = document.getElementById('start-btn');
+const overlayTitle = document.getElementById('overlay-title');
+const overlayDesc = document.getElementById('overlay-desc');
+const invKey = document.getElementById('inv-key');
+
+// Pulsanti mobile
+const btnUp = document.getElementById('btn-up');
+const btnDown = document.getElementById('btn-down');
+const btnAction = document.getElementById('btn-action');
+
+// Configurazione Mappa
+const TILE_SIZE = 40; // Dimensione di ogni cella in pixel
+const COLS = 15;
+const ROWS = 10;
+
+// Codici Mappa: 0=Pavimento, 1=Muro, 2=Porta, 3=Chiave, 4=Nota/Indizio, 5=Inizio
+// Disegno semplice della stanza
+const rawMap = [
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+    [1,5,0,0,0,1,0,0,0,0,0,1,0,3,1], // Chiave in alto a destra
+    [1,0,1,1,0,1,0,1,1,1,0,1,0,1,1],
+    [1,0,1,4,0,0,0,0,0,0,0,0,0,0,1], // Nota (Indizio)
+    [1,0,1,1,1,1,1,0,1,1,1,1,1,0,1],
+    [1,0,0,0,0,0,0,0,1,0,0,0,0,0,1],
+    [1,0,1,1,0,1,1,1,1,0,1,1,0,1,1],
+    [1,0,0,1,0,0,0,0,0,0,1,0,0,0,1],
+    [1,1,0,0,0,1,1,0,1,2,1,0,1,1,1], // Porta in basso al centro
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+];
+
+// Stato del Gioco
+let gameState = 'MENU'; // MENU, PLAYING, WON
+let map = [];
+let player = { x: 0, y: 0, size: 20, speed: 3, color: '#00ffcc' };
+let inventory = { key: false };
+let moveTarget = null; // Per movimento col mouse
+let particles = []; // Effetti visivi
+let lightRadius = 120;
+
+// Input
+const keys = { w: false, a: false, s: false, d: false, ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false, " ": false };
+
+// Inizializzazione
+function initGame() {
+    // Parsing della mappa
+    map = [];
+    for (let r = 0; r < ROWS; r++) {
+        let row = [];
+        for (let c = 0; c < COLS; c++) {
+            let type = rawMap[r][c];
+            let tile = { x: c * TILE_SIZE, y: r * TILE_SIZE, w: TILE_SIZE, h: TILE_SIZE, type: type };
+            
+            // Trova punto di partenza
+            if (type === 5) {
+                player.x = c * TILE_SIZE + TILE_SIZE / 2;
+                player.y = r * TILE_SIZE + TILE_SIZE / 2;
+                tile.type = 0; // Diventa pavimento
+            }
+            row.push(tile);
+        }
+        map.push(row);
+    }
+    
+    inventory.key = false;
+    invKey.classList.remove('active');
+    gameState = 'PLAYING';
+    overlay.classList.add('hidden');
+    moveTarget = null;
+    showMessage("Trova il portale di uscita!", 3000);
+    
+    gameLoop();
+}
+
+// Loop principale
+function gameLoop() {
+    if (gameState !== 'PLAYING') return;
+
+    update();
+    draw();
+    requestAnimationFrame(gameLoop);
+}
+
+function update() {
+    // Movimento Tastiera
+    let dx = 0;
+    let dy = 0;
+
+    if (keys.w || keys.ArrowUp) dy = -player.speed;
+    if (keys.s || keys.ArrowDown) dy = player.speed;
+    if (keys.a || keys.ArrowLeft) dx = -player.speed;
+    if (keys.d || keys.ArrowRight) dx = player.speed;
+
+    // Movimento Mouse (se attivo)
+    if (moveTarget) {
+        const diffX = moveTarget.x - player.x;
+        const diffY = moveTarget.y - player.y;
+        const dist = Math.hypot(diffX, diffY);
+
+        if (dist > player.speed) {
+            dx = (diffX / dist) * player.speed;
+            dy = (diffY / dist) * player.speed;
+        } else {
+            player.x = moveTarget.x;
+            player.y = moveTarget.y;
+            moveTarget = null; // Arrivato
+            checkInteraction(); // Controlla interazioni arrivati
+        }
+    }
+
+    // Se ci sono input tastiera, cancella target mouse
+    if (dx !== 0 || dy !== 0) {
+        moveTarget = null;
+        movePlayer(dx, dy);
+    }
+}
+
+function movePlayer(dx, dy) {
+    // Collisione Assi X
+    if (!checkCollision(player.x + dx, player.y)) {
+        player.x += dx;
+    }
+    // Collisione Assi Y
+    if (!checkCollision(player.x, player.y + dy)) {
+        player.y += dy;
+    }
+}
+
+function checkCollision(x, y) {
+    // Controlla i bordi del canvas
+    if (x - player.size/2 < 0 || x + player.size/2 > canvas.width ||
+        y - player.size/2 < 0 || y + player.size/2 > canvas.height) {
+        return true;
+    }
+
+    // Controlla le tile
+    // Controlliamo i 4 angoli del giocatore contro la griglia
+    const points = [
+        {x: x - player.size/2 + 2, y: y - player.size/2 + 2}, // Top-Left
+        {x: x + player.size/2 - 2, y: y - player.size/2 + 2}, // Top-Right
+        {x: x - player.size/2 + 2, y: y + player.size/2 - 2}, // Bottom-Left
+        {x: x + player.size/2 - 2, y: y + player.size/2 - 2}  // Bottom-Right
+    ];
+
+    for (let p of points) {
+        let col = Math.floor(p.x / TILE_SIZE);
+        let row = Math.floor(p.y / TILE_SIZE);
+
+        if (row >= 0 && row < ROWS && col >= 0 && col < COLS) {
+            let tile = map[row][col];
+            // 1 = Muro, 2 = Porta (chiusa se non hai chiave)
+            if (tile.type === 1) return true;
+            if (tile.type === 2 && !inventory.key) return true; 
+        }
+    }
+    return false;
+}
+
+function checkInteraction() {
+    let col = Math.floor(player.x / TILE_SIZE);
+    let row = Math.floor(player.y / TILE_SIZE);
+
+    if (row >= 0 && row < ROWS && col >= 0 && col < COLS) {
+        let tile = map[row][col];
+        
+        // Raccolta Chiave
+        if (tile.type === 3) {
+            inventory.key = true;
+            invKey.classList.add('active');
+            tile.type = 0; // Rimuovi chiave dalla mappa
+            showMessage("Hai ottenuto la Chiave di Accesso!", 3000);
+            createParticles(player.x, player.y, '#ffff00');
+        }
+        
+        // Lettura Nota
+        else if (tile.type === 4) {
+            showMessage("NOTA: Il portale è bloccato. Cerca la chiave dorata.", 4000);
+        }
+
+        // Uscita
+        else if (tile.type === 2) {
+            if (inventory.key) {
+                gameState = 'WON';
+                winGame();
+            } else {
+                showMessage("Porta Bloccata. Serve una Chiave.", 2000);
+            }
+        }
+    }
+}
+
+// Disegno
+function draw() {
+    // Sfondo
+    ctx.fillStyle = '#111';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Disegna Mappa
+    for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+            let tile = map[r][c];
+            let x = tile.x;
+            let y = tile.y;
+
+            if (tile.type === 1) { // Muro
+                ctx.fillStyle = '#444';
+                ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+                ctx.strokeStyle = '#555';
+                ctx.strokeRect(x, y, TILE_SIZE, TILE_SIZE);
+            } else if (tile.type === 2) { // Porta
+                ctx.fillStyle = inventory.key ? '#44ff44' : '#ff4444'; // Verde se aperta, Rossi se chiusa
+                ctx.fillRect(x + 5, y + 5, TILE_SIZE - 10, TILE_SIZE - 10);
+                // Simbolo lucchetto
+                ctx.fillStyle = '#fff';
+                ctx.font = '20px Arial';
+                ctx.fillText(inventory.key ? '🔓' : '🔒', x + 10, y + 28);
+            } else if (tile.type === 3) { // Chiave
+                ctx.fillStyle = 'rgba(255, 255, 0, 0.2)';
+                ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+                ctx.fillStyle = '#ffff00';
+                ctx.font = '24px Arial';
+                ctx.fillText('🔑', x + 8, y + 28);
+            } else if (tile.type === 4) { // Nota
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+                ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+                ctx.fillStyle = '#fff';
+                ctx.font = '20px Arial';
+                ctx.fillText('📜', x + 8, y + 28);
+            }
+        }
+    }
+
+    // Disegna Giocatore
+    ctx.fillStyle = player.color;
+    ctx.shadowColor = player.color;
+    ctx.shadowBlur = 15;
+    ctx.fillRect(player.x - player.size/2, player.y - player.size/2, player.size, player.size);
+    ctx.shadowBlur = 0; // Reset shadow
+
+    // Disegna Target Mouse
+    if (moveTarget) {
+        ctx.strokeStyle = 'rgba(0, 255, 204, 0.5)';
+        ctx.beginPath();
+        ctx.moveTo(player.x, player.y);
+        ctx.lineTo(moveTarget.x, moveTarget.y);
+        ctx.stroke();
+        
+        ctx.fillStyle = 'rgba(0, 255, 204, 0.3)';
+        ctx.beginPath();
+        ctx.arc(moveTarget.x, moveTarget.y, 5, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // Disegna Particelle
+    updateAndDrawParticles();
+
+    // Effetto Torcia (Darkness)
+    // Crea un gradiente radiale dal centro del giocatore
+    let gradient = ctx.createRadialGradient(player.x, player.y, 20, player.x, player.y, lightRadius);
+    gradient.addColorStop(0, 'rgba(0,0,0,0)'); // Transparent center
+    gradient.addColorStop(0.8, 'rgba(0,0,0,0.6)');
+    gradient.addColorStop(1, 'rgba(0,0,0,0.98)'); // Dark edges
+
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+
+function createParticles(x, y, color) {
+    for(let i=0; i<10; i++) {
+        particles.push({
+            x: x, y: y,
+            vx: (Math.random() - 0.5) * 4,
+            vy: (Math.random() - 0.5) * 4,
+            life: 1.0,
+            color: color
+        });
+    }
+}
+
+function updateAndDrawParticles() {
+    for (let i = particles.length - 1; i >= 0; i--) {
+        let p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life -= 0.05;
+
+        ctx.globalAlpha = p.life;
+        ctx.fillStyle = p.color;
+        ctx.fillRect(p.x, p.y, 4, 4);
+        ctx.globalAlpha = 1.0;
+
+        if (p.life <= 0) particles.splice(i, 1);
+    }
+}
+
+function showMessage(text, duration) {
+    messageBox.textContent = text;
+    messageBox.classList.add('visible');
+    clearTimeout(window.msgTimeout);
+    window.msgTimeout = setTimeout(() => {
+        messageBox.classList.remove('visible');
+    }, duration);
+}
+
+function winGame() {
+    overlayTitle.textContent = "EVASIONE COMPLETATA";
+    overlayTitle.style.color = "#44ff44";
+    overlayDesc.innerHTML = "Sei riuscito a uscire dal sistema!<br>Grazie per aver giocato.";
+    startBtn.textContent = "Riavvia";
+    overlay.classList.remove('hidden');
+}
+
+// --- Event Listeners ---
+
+// Tastiera
+window.addEventListener('keydown', (e) => {
+    if (keys.hasOwnProperty(e.key)) keys[e.key] = true;
+    if (e.key === " " || e.key === "e" || e.key === "E") {
+        if (gameState === 'PLAYING') checkInteraction();
+    }
+});
+
+window.addEventListener('keyup', (e) => {
+    if (keys.hasOwnProperty(e.key)) keys[e.key] = false;
+});
+
+// Mouse / Click per movimento
+canvas.addEventListener('mousedown', (e) => {
+    if (gameState !== 'PLAYING') return;
+    
+    const rect = canvas.getBoundingClientRect();
+    // Scala le coordinate se il canvas è ridimensionato via CSS
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+
+    const clickX = (e.clientX - rect.left) * scaleX;
+    const clickY = (e.clientY - rect.top) * scaleY;
+
+    moveTarget = { x: clickX, y: clickY };
+});
+
+// Touch
+canvas.addEventListener('touchstart', (e) => {
+    if (gameState !== 'PLAYING') return;
+    e.preventDefault(); // Previene scroll
+    
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    
+    const touch = e.touches[0];
+    const clickX = (touch.clientX - rect.left) * scaleX;
+    const clickY = (touch.clientY - rect.top) * scaleY;
+
+    moveTarget = { x: clickX, y: clickY };
+}, {passive: false});
+
+// Pulsanti Mobile Virtuali
+const handleMobileBtn = (key, state) => { keys[key] = state; };
+
+btnUp.addEventListener('touchstart', (e) => { e.preventDefault(); handleMobileBtn('ArrowUp', true); });
+btnUp.addEventListener('touchend', (e) => { e.preventDefault(); handleMobileBtn('ArrowUp', false); });
+btnDown.addEventListener('touchstart', (e) => { e.preventDefault(); handleMobileBtn('ArrowDown', true); });
+btnDown.addEventListener('touchend', (e) => { e.preventDefault(); handleMobileBtn('ArrowDown', false); });
+
+btnAction.addEventListener('touchstart', (e) => { 
+    e.preventDefault(); 
+    if (gameState === 'PLAYING') checkInteraction();
+    // Effetto visivo bottone
+    btnAction.style.background = 'var(--accent)';
+    btnAction.style.color = '#000';
+});
+btnAction.addEventListener('touchend', (e) => { 
+    e.preventDefault(); 
+    btnAction.style.background = 'rgba(255,255,255,0.1)';
+    btnAction.style.color = 'var(--accent)';
+});
+
+
+// Start Game
+startBtn.addEventListener('click', initGame);
+
+</script>
+</body>
+</html>
